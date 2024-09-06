@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Transcription App</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
+    <style>
+
+    </style>
+</head>
+<body>
+    <div class="transcription-controls">
+    <h1>Audio Transcription App</h1>
+    <form id="upload-form" enctype="multipart/form-data">
+        <input type="file" name="file" accept="audio/*" required>
+        <label>
+            <input type="checkbox" name="quick_test" id="quick-test"> Quick Test (first minute only)
+        </label>
+        <button type="submit">Upload</button>
+    </form>
+    <button id="play-button">Play Audio</button>
+    <button id="transcribe-button">Transcribe</button>
+    <button id="cancel-button">Cancel Transcription</button>
+    <div id="progress-container">
+        <div id="progress-bar"></div>
+        <div id="progress-text">0%</div>
+    </div>
+    <div id="transcription"></div>
+
+    <script>
+        $(document).ready(function() {
+            var socket = io();
+            var transcriptionInProgress = false;
+            var currentFilename = null;
+            var isQuickTest = false;
+            
+            socket.on('transcription_progress', function(data) {
+                $('#progress').width(data.progress + '%').text(data.progress + '%');
+            });
+
+            socket.on('transcription_complete', function(data) {
+                $('#progress').width('100%').text('100%');
+                var transcriptionText = data.transcription;
+                if (data.quick_test) {
+                    transcriptionText = "(Quick Test - First Minute Only)\n\n" + transcriptionText;
+                }
+                $('#transcription').text(transcriptionText);
+                transcriptionInProgress = false;
+                $('#cancel-button').hide();
+                $('#play-button').show();
+                $('#transcribe-button').show();
+            });
+
+            socket.on('transcription_error', function(data) {
+                alert('Transcription error: ' + data.error);
+                transcriptionInProgress = false;
+                $('#cancel-button').hide();
+                $('#play-button').show();
+                $('#transcribe-button').show();
+            });
+
+            socket.on('transcription_cancelled', function() {
+                alert('Transcription cancelled');
+                $('#progress').width('0%').text('0%');
+                $('#transcription').text('');
+                transcriptionInProgress = false;
+                $('#cancel-button').hide();
+                $('#play-button').show();
+                $('#transcribe-button').show();
+            });
+
+            $('#upload-form').on('submit', function(e) {
+                e.preventDefault();
+                var formData = new FormData(this);
+                
+                // Explicitly set the quick_test value
+                formData.set('quick_test', $('#quick-test').prop('checked'));
+                
+                $.ajax({
+                    url: '/',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(data) {
+                        if (data.error) {
+                            alert(data.error);
+                        } else {
+                            currentFilename = data.filename;
+                            isQuickTest = data.quick_test;
+                            $('#play-button').show();
+                            $('#transcribe-button').show();
+                            $('#progress').width('0%').text('0%');
+                            $('#transcription').text(isQuickTest ? 
+                                'File shortened to 1 minute. Click "Play Audio" to listen or "Transcribe" to start transcription.' :
+                                'File uploaded. Click "Play Audio" to listen or "Transcribe" to start transcription.');
+                        }
+                    },
+                    error: function() {
+                        alert('An error occurred during the file upload.');
+                    }
+                });
+            });
+
+            $('#play-button').on('click', function() {
+                if (currentFilename) {
+                    window.location.href = '/play/' + currentFilename;
+                }
+            });
+
+            $('#transcribe-button').on('click', function() {
+                if (currentFilename && !transcriptionInProgress) {
+                    $.ajax({
+                        url: '/transcribe',
+                        type: 'POST',
+                        data: { filename: currentFilename },
+                        success: function(data) {
+                            if (data.error) {
+                                alert(data.error);
+                            } else {
+                                $('#progress').width('0%').text('0%');
+                                $('#transcription').text('Transcription in progress...');
+                                transcriptionInProgress = true;
+                                $('#cancel-button').show();
+                                $('#play-button').hide();
+                                $('#transcribe-button').hide();
+                            }
+                        },
+                        error: function() {
+                            alert('An error occurred while starting the transcription.');
+                        }
+                    });
+                }
+            });
+
+            $('#cancel-button').on('click', function() {
+                if (transcriptionInProgress) {
+                    socket.emit('cancel_transcription');
+                }
+            });
+        });
+    </script>
+    </div>
+</body>
+</html>
