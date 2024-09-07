@@ -1,7 +1,7 @@
 import os
 import time
 import threading
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, url_for
 from flask_socketio import SocketIO
 from pydub import AudioSegment
 import wave
@@ -85,10 +85,11 @@ def index():
                         duration = frames / float(rate)
                     
                     print(f"Quick test: File shortened to {duration:.2f} seconds")
-                    return jsonify({'message': 'File shortened', 'filename': os.path.basename(shortened_filename), 'quick_test': True})
+                    audio_url = url_for('play_file', filename=os.path.basename(shortened_filename))
+                    return jsonify({'message': 'File shortened', 'filename': os.path.basename(shortened_filename), 'quick_test': True, 'audio_url': audio_url})
                 else:
-                    print("Full file mode")
-                    return jsonify({'message': 'File uploaded', 'filename': os.path.basename(wav_filename), 'quick_test': False})
+                    audio_url = url_for('play_file', filename=os.path.basename(wav_filename))
+                    return jsonify({'message': 'File uploaded', 'filename': os.path.basename(wav_filename), 'quick_test': False, 'audio_url': audio_url})
             except Exception as e:
                 # Print the full error traceback
                 import traceback
@@ -115,7 +116,7 @@ def play_file(filename):
     full_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     print(f"Attempting to play file: {full_path}")
     print(f"File exists: {os.path.exists(full_path)}")
-    return send_file(full_path, as_attachment=True)
+    return send_file(full_path, mimetype="audio/wav", as_attachment=False)
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
